@@ -3,7 +3,8 @@
 
 void SynthScreen::paint(juce::Graphics& g, juce::Rectangle<int> bounds)
 {
-    auto waveArea = bounds.removeFromTop(bounds.getHeight() / 2);
+    // Top 60% for waveform, bottom 40% split between ADSR and note display
+    auto waveArea = bounds.removeFromTop((int)(bounds.getHeight() * 0.6f));
     auto bottomArea = bounds;
 
     auto adsrArea = bottomArea.removeFromLeft(bottomArea.getWidth() / 2);
@@ -16,13 +17,13 @@ void SynthScreen::paint(juce::Graphics& g, juce::Rectangle<int> bounds)
 
 void SynthScreen::drawWaveform(juce::Graphics& g, juce::Rectangle<int> bounds)
 {
+    juce::Path wavePath;
+    float centerY = (float)bounds.getCentreY();
+    float amplitude = (float)bounds.getHeight() * 0.35f;
+
     if (waveformData.empty())
     {
-        // Draw a default sine-ish wave
-        juce::Path wavePath;
-        float centerY = bounds.getCentreY();
-        float amplitude = (float)bounds.getHeight() * 0.35f;
-
+        // Default sine wave visualization
         wavePath.startNewSubPath((float)bounds.getX(), centerY);
         for (int x = 0; x < bounds.getWidth(); ++x)
         {
@@ -30,97 +31,110 @@ void SynthScreen::drawWaveform(juce::Graphics& g, juce::Rectangle<int> bounds)
             float y = centerY - std::sin(t * juce::MathConstants<float>::twoPi * 3.0f) * amplitude;
             wavePath.lineTo((float)(bounds.getX() + x), y);
         }
-
-        g.setColour(OP1Colors::synthColor);
-        g.strokePath(wavePath, juce::PathStrokeType(2.0f));
     }
     else
     {
-        juce::Path wavePath;
-        float centerY = bounds.getCentreY();
-        float amplitude = (float)bounds.getHeight() * 0.35f;
         int dataSize = (int)waveformData.size();
 
-        wavePath.startNewSubPath((float)bounds.getX(), centerY);
-        for (int x = 0; x < bounds.getWidth(); ++x)
+        wavePath.startNewSubPath((float)bounds.getX(),
+            centerY - waveformData[0] * amplitude);
+
+        for (int x = 1; x < bounds.getWidth(); ++x)
         {
             int dataIndex = (int)((float)x / (float)bounds.getWidth() * (float)dataSize);
             dataIndex = juce::jlimit(0, dataSize - 1, dataIndex);
             float y = centerY - waveformData[(size_t)dataIndex] * amplitude;
             wavePath.lineTo((float)(bounds.getX() + x), y);
         }
-
-        g.setColour(OP1Colors::synthColor);
-        g.strokePath(wavePath, juce::PathStrokeType(2.0f));
-
-        // Glow effect
-        g.setColour(OP1Colors::synthColor.withAlpha(0.15f));
-        g.strokePath(wavePath, juce::PathStrokeType(6.0f));
     }
 
-    // Engine label
-    g.setColour(OP1Colors::textSecondary);
-    g.setFont(OP1LookAndFeel::getOP1Font(12.0f));
-    g.drawText(engineName, bounds.removeFromBottom(16), juce::Justification::centred);
+    // Subtle glow layer: same path at 8% alpha, 5px stroke
+    g.setColour(OP1Colors::synthColor.withAlpha(0.08f));
+    g.strokePath(wavePath, juce::PathStrokeType(5.0f,
+        juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // Main waveform: synthColor, 1.5px anti-aliased stroke
+    g.setColour(OP1Colors::synthColor);
+    g.strokePath(wavePath, juce::PathStrokeType(1.5f,
+        juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // Engine name label at bottom of waveform area
+    if (engineName.isNotEmpty())
+    {
+        g.setColour(OP1Colors::textSecondary);
+        g.setFont(OP1LookAndFeel::getDisplayFont(10.0f));
+        g.drawText(engineName.toUpperCase(),
+                   bounds.removeFromBottom(14).reduced(4, 0),
+                   juce::Justification::centredLeft);
+    }
 }
 
 void SynthScreen::drawADSR(juce::Graphics& g, juce::Rectangle<int> bounds)
 {
-    bounds.reduce(4, 4);
+    bounds.reduce(6, 4);
+
+    // Label
     g.setColour(OP1Colors::textDim);
-    g.setFont(OP1LookAndFeel::getOP1Font(10.0f));
+    g.setFont(OP1LookAndFeel::getDisplayFont(9.0f));
     g.drawText("ADSR", bounds.removeFromTop(12), juce::Justification::centredLeft);
 
-    auto envBounds = bounds.toFloat();
+    auto envBounds = bounds.reduced(0, 2).toFloat();
     float w = envBounds.getWidth();
     float h = envBounds.getHeight();
     float x = envBounds.getX();
     float y = envBounds.getY();
 
-    // Normalize ADSR to visual widths
+    // Normalize ADSR segments to visual widths
     float totalTime = attack + decay + 0.2f + release;
     float aW = (attack / totalTime) * w;
     float dW = (decay / totalTime) * w;
-    float sW = 0.2f / totalTime * w;
+    float sW = (0.2f / totalTime) * w;
     float rW = (release / totalTime) * w;
 
     juce::Path adsrPath;
     adsrPath.startNewSubPath(x, y + h);
-    adsrPath.lineTo(x + aW, y);                           // Attack
-    adsrPath.lineTo(x + aW + dW, y + h * (1.0f - sustain)); // Decay to sustain
-    adsrPath.lineTo(x + aW + dW + sW, y + h * (1.0f - sustain)); // Sustain hold
-    adsrPath.lineTo(x + aW + dW + sW + rW, y + h);       // Release
+    adsrPath.lineTo(x + aW, y);                                       // Attack peak
+    adsrPath.lineTo(x + aW + dW, y + h * (1.0f - sustain));          // Decay to sustain
+    adsrPath.lineTo(x + aW + dW + sW, y + h * (1.0f - sustain));    // Sustain hold
+    adsrPath.lineTo(x + aW + dW + sW + rW, y + h);                  // Release
 
-    g.setColour(OP1Colors::waveformGreen);
-    g.strokePath(adsrPath, juce::PathStrokeType(1.5f));
-
-    // Fill under curve
+    // Fill underneath at 6% alpha
     juce::Path fillPath = adsrPath;
     fillPath.lineTo(x, y + h);
     fillPath.closeSubPath();
-    g.setColour(OP1Colors::waveformGreen.withAlpha(0.1f));
+    g.setColour(OP1Colors::waveGreen.withAlpha(0.06f));
     g.fillPath(fillPath);
+
+    // Thin envelope line in waveGreen, 1px stroke
+    g.setColour(OP1Colors::waveGreen);
+    g.strokePath(adsrPath, juce::PathStrokeType(1.0f,
+        juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
 void SynthScreen::drawNoteInfo(juce::Graphics& g, juce::Rectangle<int> bounds)
 {
-    bounds.reduce(4, 4);
+    bounds.reduce(6, 4);
 
     if (currentNote >= 0)
     {
-        static const char* noteNames[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        static const char* noteNames[] = {
+            "C", "C#", "D", "D#", "E", "F",
+            "F#", "G", "G#", "A", "A#", "B"
+        };
         int octave = currentNote / 12 - 1;
         int noteIndex = currentNote % 12;
+        juce::String noteStr = juce::String(noteNames[noteIndex]) + juce::String(octave);
 
-        g.setColour(OP1Colors::textPrimary);
-        g.setFont(OP1LookAndFeel::getOP1BoldFont(24.0f));
-        g.drawText(juce::String(noteNames[noteIndex]) + juce::String(octave),
-                   bounds, juce::Justification::centred);
+        // Large bold note name in textBright
+        g.setColour(OP1Colors::textBright);
+        g.setFont(OP1LookAndFeel::getDisplayBoldFont(28.0f));
+        g.drawText(noteStr, bounds, juce::Justification::centred);
     }
     else
     {
+        // Inactive: "--" in textDim
         g.setColour(OP1Colors::textDim);
-        g.setFont(OP1LookAndFeel::getOP1Font(12.0f));
+        g.setFont(OP1LookAndFeel::getDisplayFont(20.0f));
         g.drawText("--", bounds, juce::Justification::centred);
     }
 }

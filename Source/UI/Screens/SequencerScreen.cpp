@@ -3,29 +3,34 @@
 
 void SequencerScreen::setStepActive(int step, bool active)
 {
-    if (step >= 0 && step < 128) steps[(size_t)step].active = active;
+    if (step >= 0 && step < 128)
+        steps[(size_t)step].active = active;
 }
 
 void SequencerScreen::setStepNote(int step, int note)
 {
-    if (step >= 0 && step < 128) steps[(size_t)step].midiNote = note;
+    if (step >= 0 && step < 128)
+        steps[(size_t)step].midiNote = note;
 }
 
 void SequencerScreen::paint(juce::Graphics& g, juce::Rectangle<int> bounds)
 {
-    auto headerArea = bounds.removeFromTop(14);
-    auto gridArea = bounds.removeFromTop(bounds.getHeight() / 2);
-    auto pianoArea = bounds;
+    auto headerArea = bounds.removeFromTop(16);
+    auto gridArea   = bounds.removeFromTop(bounds.getHeight() / 2);
+    auto pianoArea  = bounds;
 
-    // Header
+    // --- Header: sequencer name in sequencerColor ---
     g.setColour(OP1Colors::sequencerColor);
-    g.setFont(OP1LookAndFeel::getOP1Font(11.0f));
-    g.drawText(seqName.toUpperCase(), headerArea.removeFromLeft(80), juce::Justification::centredLeft);
+    g.setFont(OP1LookAndFeel::getDisplayFont(11.0f));
+    g.drawText(seqName.toUpperCase(), headerArea.removeFromLeft(80),
+               juce::Justification::centredLeft);
 
+    // Playing indicator dot in vuGreen
     if (isPlaying)
     {
         g.setColour(OP1Colors::vuGreen);
-        g.fillEllipse((float)headerArea.getX(), (float)headerArea.getCentreY() - 3, 6, 6);
+        g.fillEllipse((float)headerArea.getX() + 2.0f,
+                       (float)headerArea.getCentreY() - 3.0f, 6.0f, 6.0f);
     }
 
     drawStepGrid(g, gridArea);
@@ -36,7 +41,7 @@ void SequencerScreen::drawStepGrid(juce::Graphics& g, juce::Rectangle<int> bound
 {
     bounds.reduce(2, 4);
     int visibleSteps = juce::jmin(numSteps, 32);
-    float stepWidth = (float)bounds.getWidth() / (float)visibleSteps;
+    float stepWidth  = (float)bounds.getWidth() / (float)visibleSteps;
     float stepHeight = (float)bounds.getHeight();
 
     for (int i = 0; i < visibleSteps; ++i)
@@ -45,21 +50,14 @@ void SequencerScreen::drawStepGrid(juce::Graphics& g, juce::Rectangle<int> bound
             (float)bounds.getX() + (float)i * stepWidth, (float)bounds.getY(),
             stepWidth - 1.0f, stepHeight);
 
-        bool isActive = steps[(size_t)i].active;
+        bool isActive  = steps[(size_t)i].active;
         bool isCurrent = (i == currentStep);
-
-        // Step background
-        if (isCurrent)
-        {
-            g.setColour(OP1Colors::sequencerColor.withAlpha(0.4f));
-            g.fillRoundedRectangle(stepBounds, 2.0f);
-        }
 
         if (isActive)
         {
-            // Note height based on MIDI note
+            // Active steps: filled bars in sequencerColor, height based on MIDI note
             float noteNorm = (float)(steps[(size_t)i].midiNote - 36) / 60.0f;
-            noteNorm = juce::jlimit(0.0f, 1.0f, noteNorm);
+            noteNorm = juce::jlimit(0.1f, 1.0f, noteNorm);
 
             float barHeight = stepHeight * (0.2f + noteNorm * 0.8f);
             auto barBounds = juce::Rectangle<float>(
@@ -68,23 +66,27 @@ void SequencerScreen::drawStepGrid(juce::Graphics& g, juce::Rectangle<int> bound
                 stepBounds.getWidth() - 2.0f,
                 barHeight);
 
-            juce::Colour stepColor = isCurrent ?
-                OP1Colors::sequencerColor : OP1Colors::sequencerColor.withAlpha(0.6f);
-            g.setColour(stepColor);
-            g.fillRoundedRectangle(barBounds, 1.0f);
+            // Current step: full brightness. Other active steps: 50% alpha
+            if (isCurrent)
+                g.setColour(OP1Colors::sequencerColor);
+            else
+                g.setColour(OP1Colors::sequencerColor.withAlpha(0.50f));
+
+            g.fillRoundedRectangle(barBounds, 2.0f);
         }
         else
         {
-            // Empty step indicator
-            g.setColour(OP1Colors::textDim.withAlpha(0.2f));
-            g.fillRoundedRectangle(stepBounds.reduced(1.0f), 1.0f);
+            // Inactive steps: textMuted at 12% alpha
+            g.setColour(OP1Colors::textMuted.withAlpha(0.12f));
+            g.fillRoundedRectangle(stepBounds.reduced(1.0f), 2.0f);
         }
 
-        // Beat markers (every 4th step)
+        // Beat markers every 4 steps: 1px line at bottom in textDim at 40% alpha
         if (i % 4 == 0)
         {
-            g.setColour(OP1Colors::textDim.withAlpha(0.5f));
-            g.fillRect(stepBounds.getX(), stepBounds.getBottom() - 2.0f, stepBounds.getWidth(), 2.0f);
+            g.setColour(OP1Colors::textDim.withAlpha(0.40f));
+            g.drawLine(stepBounds.getX(), stepBounds.getBottom(),
+                       stepBounds.getRight(), stepBounds.getBottom(), 1.0f);
         }
     }
 }
@@ -93,52 +95,57 @@ void SequencerScreen::drawPianoRoll(juce::Graphics& g, juce::Rectangle<int> boun
 {
     bounds.reduce(2, 2);
 
-    // Simplified piano roll view showing note positions
     int visibleSteps = juce::jmin(numSteps, 32);
-    float stepWidth = (float)bounds.getWidth() / (float)visibleSteps;
+    float stepWidth  = (float)bounds.getWidth() / (float)visibleSteps;
 
-    // Background grid
-    int noteRange = 24; // 2 octaves
-    int baseNote = 48; // C3
+    // Note grid: 2 octaves
+    int noteRange = 24;
+    int baseNote  = 48;  // C3
     float noteHeight = (float)bounds.getHeight() / (float)noteRange;
 
-    // Draw note grid lines
+    // --- Background grid: black key rows at textMuted 8% alpha ---
     for (int n = 0; n < noteRange; ++n)
     {
-        int note = baseNote + n;
-        bool isBlack = false;
-        int noteInOctave = note % 12;
-        if (noteInOctave == 1 || noteInOctave == 3 || noteInOctave == 6 ||
-            noteInOctave == 8 || noteInOctave == 10)
-            isBlack = true;
+        int noteInOctave = (baseNote + n) % 12;
+        bool isBlack = (noteInOctave == 1 || noteInOctave == 3 ||
+                        noteInOctave == 6 || noteInOctave == 8 ||
+                        noteInOctave == 10);
 
-        float y = bounds.getBottom() - (float)(n + 1) * noteHeight;
-        g.setColour(isBlack ? OP1Colors::textDim.withAlpha(0.1f) : OP1Colors::textDim.withAlpha(0.05f));
-        g.fillRect((float)bounds.getX(), y, (float)bounds.getWidth(), noteHeight);
+        if (isBlack)
+        {
+            float y = (float)bounds.getBottom() - (float)(n + 1) * noteHeight;
+            g.setColour(OP1Colors::textMuted.withAlpha(0.08f));
+            g.fillRect((float)bounds.getX(), y,
+                       (float)bounds.getWidth(), noteHeight);
+        }
     }
 
-    // Draw notes
+    // --- Note blocks: sequencerColor rounded rectangles ---
     for (int i = 0; i < visibleSteps; ++i)
     {
-        if (!steps[(size_t)i].active) continue;
+        if (!steps[(size_t)i].active)
+            continue;
 
-        int note = steps[(size_t)i].midiNote;
+        int note    = steps[(size_t)i].midiNote;
         int relNote = note - baseNote;
-        if (relNote < 0 || relNote >= noteRange) continue;
+        if (relNote < 0 || relNote >= noteRange)
+            continue;
 
         float x = (float)bounds.getX() + (float)i * stepWidth;
-        float y = bounds.getBottom() - (float)(relNote + 1) * noteHeight;
+        float y = (float)bounds.getBottom() - (float)(relNote + 1) * noteHeight;
 
         bool isCurrent = (i == currentStep);
-        g.setColour(isCurrent ? OP1Colors::sequencerColor : OP1Colors::sequencerColor.withAlpha(0.7f));
-        g.fillRoundedRectangle(x + 0.5f, y, stepWidth - 1.0f, noteHeight, 1.0f);
+        g.setColour(isCurrent ? OP1Colors::sequencerColor
+                              : OP1Colors::sequencerColor.withAlpha(0.65f));
+        g.fillRoundedRectangle(x + 0.5f, y + 0.5f,
+                               stepWidth - 1.0f, noteHeight - 1.0f, 1.5f);
     }
 
-    // Playhead
+    // --- Playhead: vertical line in textPrimary at 20% alpha ---
     if (currentStep < visibleSteps)
     {
         float px = (float)bounds.getX() + (float)currentStep * stepWidth;
-        g.setColour(OP1Colors::textPrimary.withAlpha(0.3f));
+        g.setColour(OP1Colors::textPrimary.withAlpha(0.20f));
         g.drawLine(px, (float)bounds.getY(), px, (float)bounds.getBottom(), 1.0f);
     }
 }

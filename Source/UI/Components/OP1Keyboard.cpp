@@ -1,4 +1,5 @@
 #include "OP1Keyboard.h"
+#include "../LookAndFeel/OP1LookAndFeel.h"
 
 OP1Keyboard::OP1Keyboard()
 {
@@ -6,11 +7,11 @@ OP1Keyboard::OP1Keyboard()
 
 void OP1Keyboard::updateKeyBounds()
 {
-    auto bounds = getLocalBounds().toFloat().reduced(2.0f);
+    auto bounds = getLocalBounds().toFloat().reduced(4.0f);
     float whiteKeyWidth = bounds.getWidth() / 14.0f; // 14 white keys in 2 octaves
     float blackKeyWidth = whiteKeyWidth * 0.65f;
     float whiteKeyHeight = bounds.getHeight();
-    float blackKeyHeight = whiteKeyHeight * 0.6f;
+    float blackKeyHeight = whiteKeyHeight * 0.55f;
 
     // White key pattern per octave: C D E F G A B
     bool isBlackKey[] = { false, true, false, true, false, false, true, false, true, false, true, false };
@@ -27,7 +28,7 @@ void OP1Keyboard::updateKeyBounds()
             keys[(size_t)i].bounds = juce::Rectangle<float>(
                 bounds.getX() + (float)whiteIndex * whiteKeyWidth,
                 bounds.getY(),
-                whiteKeyWidth - 1.0f,
+                whiteKeyWidth - 1.0f,  // 1px gap between white keys
                 whiteKeyHeight);
             whiteIndex++;
         }
@@ -61,34 +62,46 @@ void OP1Keyboard::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    // Background
-    g.setColour(OP1Colors::bodyDark);
-    g.fillRoundedRectangle(bounds, 4.0f);
+    // Background: body color with very subtle rounded rectangle
+    g.setColour(OP1Colors::body);
+    g.fillRoundedRectangle(bounds, 6.0f);
 
     // Draw white keys first
     for (int i = 0; i < numKeys; ++i)
     {
         if (keys[(size_t)i].isBlack) continue;
 
-        auto& key = keys[(size_t)i];
+        auto key = keys[(size_t)i];
         bool isPressed = (i == pressedKey);
 
-        // Key body with OP-1 style rounded rectangles
-        g.setColour(isPressed ? OP1Colors::keyPressed : OP1Colors::keyWhite);
-        g.fillRoundedRectangle(key.bounds, 3.0f);
+        // Key body - flat OP-1 Field style with 4px rounded rectangle
+        g.setColour(isPressed ? OP1Colors::keyActive : OP1Colors::keyWhite);
+        g.fillRoundedRectangle(key.bounds, 4.0f);
 
-        // Subtle border
-        g.setColour(OP1Colors::bodyDark.withAlpha(0.3f));
-        g.drawRoundedRectangle(key.bounds, 3.0f, 0.5f);
+        // Subtle keyWhiteEdge bottom border for depth
+        if (!isPressed)
+        {
+            auto edgeBounds = key.bounds;
+            edgeBounds.removeFromTop(edgeBounds.getHeight() - 2.0f);
+            g.setColour(OP1Colors::keyWhiteEdge);
+            // Use a path to only round bottom corners
+            juce::Path edgePath;
+            edgePath.addRoundedRectangle(edgeBounds.getX(), edgeBounds.getY(),
+                                          edgeBounds.getWidth(), edgeBounds.getHeight(),
+                                          4.0f, 4.0f,
+                                          false, false, true, true);
+            g.fillPath(edgePath);
+        }
 
-        // Key label for C notes
+        // C note labels
         if (key.noteOffset % 12 == 0)
         {
-            g.setColour(OP1Colors::textDim);
-            g.setFont(juce::Font(juce::FontOptions(10.0f)));
+            g.setColour(OP1Colors::textSecondary);
+            g.setFont(OP1LookAndFeel::getDisplayFont(9.0f));
             int octave = currentOctave + key.noteOffset / 12;
-            g.drawText("C" + juce::String(octave),
-                       key.bounds.removeFromBottom(15.0f),
+            auto labelBounds = key.bounds;
+            labelBounds = labelBounds.removeFromBottom(14.0f);
+            g.drawText("C" + juce::String(octave), labelBounds,
                        juce::Justification::centred);
         }
     }
@@ -98,22 +111,32 @@ void OP1Keyboard::paint(juce::Graphics& g)
     {
         if (!keys[(size_t)i].isBlack) continue;
 
-        auto& key = keys[(size_t)i];
+        auto key = keys[(size_t)i];
         bool isPressed = (i == pressedKey);
 
-        // Shadow
-        g.setColour(juce::Colours::black.withAlpha(0.3f));
-        g.fillRoundedRectangle(key.bounds.translated(1, 1), 2.0f);
+        // Shadow on bottom only (not offset)
+        g.setColour(juce::Colours::black.withAlpha(0.2f));
+        auto shadowBounds = key.bounds;
+        shadowBounds.removeFromTop(shadowBounds.getHeight() - 3.0f);
+        g.fillRoundedRectangle(shadowBounds.expanded(0.5f, 0.0f).translated(0.0f, 1.0f), 2.0f);
 
-        // Key body
-        g.setColour(isPressed ? OP1Colors::keyPressed : OP1Colors::keyBlack);
-        g.fillRoundedRectangle(key.bounds, 2.0f);
+        // Key body - 3px rounded
+        g.setColour(isPressed ? OP1Colors::keyActive : OP1Colors::keyBlack);
+        g.fillRoundedRectangle(key.bounds, 3.0f);
 
-        // Highlight
-        g.setColour(juce::Colours::white.withAlpha(0.05f));
-        auto highlightBounds = key.bounds.reduced(2.0f);
-        highlightBounds.setHeight(highlightBounds.getHeight() * 0.3f);
-        g.fillRoundedRectangle(highlightBounds, 1.0f);
+        // Top area gets subtle white 4% highlight
+        if (!isPressed)
+        {
+            auto highlightBounds = key.bounds.reduced(1.0f);
+            highlightBounds.setHeight(highlightBounds.getHeight() * 0.35f);
+            g.setColour(juce::Colours::white.withAlpha(0.04f));
+            juce::Path highlightPath;
+            highlightPath.addRoundedRectangle(highlightBounds.getX(), highlightBounds.getY(),
+                                               highlightBounds.getWidth(), highlightBounds.getHeight(),
+                                               3.0f, 3.0f,
+                                               true, true, false, false);
+            g.fillPath(highlightPath);
+        }
     }
 }
 

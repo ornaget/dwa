@@ -16,9 +16,9 @@ void VUMeter::setLevel(float left, float right)
 
 void VUMeter::timerCallback()
 {
-    // Decay
-    levelL *= 0.85f;
-    levelR *= 0.85f;
+    // Smoother decay: 0.9f multiplier (was 0.85f)
+    levelL *= 0.9f;
+    levelR *= 0.9f;
 
     peakHoldCounterL--;
     peakHoldCounterR--;
@@ -30,43 +30,45 @@ void VUMeter::timerCallback()
 
 void VUMeter::drawChannel(juce::Graphics& g, juce::Rectangle<float> bounds, float level, float peak)
 {
-    int numSegments = 12;
-    float segmentHeight = bounds.getHeight() / (float)numSegments;
-    float gap = 1.0f;
+    int numSegments = 16;
+    float gap = 1.5f;
+    float segmentHeight = (bounds.getHeight() - gap * (float)(numSegments - 1)) / (float)numSegments;
 
     for (int i = 0; i < numSegments; ++i)
     {
+        // Segment level: top segment = 1.0, bottom segment = lowest
         float segLevel = (float)(numSegments - i) / (float)numSegments;
+
+        float yPos = bounds.getY() + (float)i * (segmentHeight + gap);
         auto segBounds = juce::Rectangle<float>(
             bounds.getX(),
-            bounds.getY() + (float)i * segmentHeight + gap,
+            yPos,
             bounds.getWidth(),
-            segmentHeight - gap * 2.0f);
+            segmentHeight);
 
+        // Color: green below 70%, yellow 70-85%, red above 85%
         juce::Colour segColor;
         if (segLevel > 0.85f)
             segColor = OP1Colors::vuRed;
-        else if (segLevel > 0.6f)
+        else if (segLevel > 0.70f)
             segColor = OP1Colors::vuYellow;
         else
             segColor = OP1Colors::vuGreen;
 
-        if (level >= segLevel)
+        // Peak hold: draw segment at peak level with full brightness
+        bool isPeakSegment = (peak >= segLevel) && (peak < segLevel + 1.0f / (float)numSegments);
+
+        if (level >= segLevel || isPeakSegment)
         {
+            // Active segments: full color
             g.setColour(segColor);
-            g.fillRoundedRectangle(segBounds, 1.0f);
+            g.fillRect(segBounds);
         }
         else
         {
-            g.setColour(segColor.withAlpha(0.15f));
-            g.fillRoundedRectangle(segBounds, 1.0f);
-        }
-
-        // Peak indicator
-        if (std::abs(peak - segLevel) < 1.0f / (float)numSegments)
-        {
-            g.setColour(segColor);
-            g.fillRoundedRectangle(segBounds, 1.0f);
+            // Inactive: color at 8% alpha (very subtle)
+            g.setColour(segColor.withAlpha(0.08f));
+            g.fillRect(segBounds);
         }
     }
 }
