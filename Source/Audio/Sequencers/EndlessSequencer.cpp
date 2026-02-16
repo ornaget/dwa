@@ -50,6 +50,20 @@ void EndlessSequencer::processBlock(juce::MidiBuffer& midiOut, int numSamples)
             }
         }
 
+        if (sampleCounter == 0 && firstStepPending)
+        {
+            // Trigger step 0 at the very start of playback
+            firstStepPending = false;
+            auto& step = steps[(size_t)currentStep];
+            if (step.active)
+            {
+                int vel = (int)(step.velocity * 127.0f);
+                midiOut.addEvent(juce::MidiMessage::noteOn(1, step.midiNote, (juce::uint8)vel), sample);
+                activeNoteOff = step.midiNote;
+                noteOffCountdown = (int)(samplesPerStep * step.duration);
+            }
+        }
+
         sampleCounter++;
         if (sampleCounter >= samplesPerStep)
         {

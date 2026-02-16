@@ -57,6 +57,11 @@ void PulseSynth::renderBlock(juce::AudioBuffer<float>& buffer, int startSample, 
             // Basic pulse wave
             float pw = pulseWidth;
 
+            // Always advance syncPhase as a shape LFO (independent of sync)
+            float shapeLfoRate = 2.0f; // Hz
+            v.syncPhase += shapeLfoRate / (float)currentSampleRate;
+            if (v.syncPhase >= 1.0f) v.syncPhase -= 1.0f;
+
             // Shape modulation: animate pulse width with LFO-like effect
             if (shapeAmount > 0.01f)
             {
@@ -64,25 +69,22 @@ void PulseSynth::renderBlock(juce::AudioBuffer<float>& buffer, int startSample, 
                 pw = juce::jlimit(0.05f, 0.95f, pw);
             }
 
-            float pulse = v.phase < pw ? 1.0f : -1.0f;
+            // Band-limited pulse wave with soft edge
+            float softness = 0.02f;
+            float edge1 = juce::jlimit(-1.0f, 1.0f, (v.phase - pw) / softness);
+            float output = 1.0f - 2.0f * (0.5f + 0.5f * edge1);
 
-            // Oscillator sync
+            // Oscillator sync: blend with sync oscillator
             if (syncAmount > 0.01f)
             {
                 float syncFreq = v.frequency * (1.0f + syncAmount * 3.0f);
-                float syncInc = syncFreq / (float)currentSampleRate;
-                float syncPulse = v.syncPhase < pw ? 1.0f : -1.0f;
-                pulse = pulse * (1.0f - syncAmount) + syncPulse * syncAmount;
-                v.syncPhase += syncInc;
-                if (v.syncPhase >= 1.0f) v.syncPhase -= 1.0f;
+                float syncPhase = std::fmod(v.phase * syncFreq / v.frequency, 1.0f);
+                float syncEdge = juce::jlimit(-1.0f, 1.0f, (syncPhase - pw) / softness);
+                float syncPulse = 1.0f - 2.0f * (0.5f + 0.5f * syncEdge);
+                output = output * (1.0f - syncAmount) + syncPulse * syncAmount;
             }
 
-            // Band-limiting: simple soft edge
-            float softness = 0.02f;
-            float edge1 = juce::jlimit(-1.0f, 1.0f, (v.phase - pw) / softness);
-            float bandLimited = 1.0f - 2.0f * (0.5f + 0.5f * edge1);
-
-            monoSample += bandLimited * env * v.velocity;
+            monoSample += output * env * v.velocity;
 
             v.phase += inc;
             if (v.phase >= 1.0f) v.phase -= 1.0f;

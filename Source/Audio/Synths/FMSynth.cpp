@@ -91,10 +91,10 @@ void FMSynth::renderBlock(juce::AudioBuffer<float>& buffer, int startSample, int
             float phaseInc = v.frequency / (float)currentSampleRate;
             float modPhaseInc = modFreq / (float)currentSampleRate;
 
-            // Modulator with feedback
+            // Modulator with per-voice feedback
             float modSignal = std::sin(v.modPhase * juce::MathConstants<float>::twoPi
-                                       + feedback * lastModOutput * juce::MathConstants<float>::pi);
-            lastModOutput = modSignal;
+                                       + feedback * v.lastModOutput * juce::MathConstants<float>::pi);
+            v.lastModOutput = modSignal;
 
             // Apply FM modulation to carrier phase
             float modulatedPhase = v.phase + depth * modSignal * 4.0f;

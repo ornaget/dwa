@@ -1,4 +1,5 @@
 #include "DrumSampler.h"
+#include <cmath>
 
 DrumSampler::DrumSampler()
 {
@@ -13,7 +14,6 @@ void DrumSampler::prepare(double sampleRate, int spb)
 void DrumSampler::noteOn(int midiNote, float velocity)
 {
     // Map MIDI notes to drum types (like OP-1 keyboard layout)
-    // C=kick, D=snare, E=hihat closed, F=hihat open, G=clap, A=tom, B=rim
     int drumType = 0;
     int noteInOctave = midiNote % 12;
     switch (noteInOctave)
@@ -60,6 +60,7 @@ float DrumSampler::generateKick(DrumVoice& v)
     float pitchDecay = std::exp(-v.samplePos * (5.0f + snap * 20.0f));
     float freq = baseFreq + baseFreq * 4.0f * pitchDecay;
     float ampDecay = std::exp(-v.samplePos * (2.0f + (1.0f - decay) * 10.0f));
+    v.ampEnv = ampDecay;
 
     v.phase += freq / (float)currentSampleRate;
     if (v.phase >= 1.0f) v.phase -= 1.0f;
@@ -78,14 +79,14 @@ float DrumSampler::generateSnare(DrumVoice& v)
 {
     float baseFreq = 180.0f * (0.5f + tone * 0.5f);
     float ampDecay = std::exp(-v.samplePos * (4.0f + (1.0f - decay) * 15.0f));
+    v.ampEnv = ampDecay;
 
     v.phase += baseFreq / (float)currentSampleRate;
     if (v.phase >= 1.0f) v.phase -= 1.0f;
 
     float toneComponent = std::sin(v.phase * juce::MathConstants<float>::twoPi) * 0.6f;
 
-    // Noise component
-    juce::Random rng;
+    // Noise component using persistent RNG
     float noise = (rng.nextFloat() * 2.0f - 1.0f) * snap;
 
     // Snare wire rattle (filtered noise)
@@ -96,7 +97,6 @@ float DrumSampler::generateSnare(DrumVoice& v)
 
 float DrumSampler::generateHihat(DrumVoice& v)
 {
-    juce::Random rng;
     float noise = rng.nextFloat() * 2.0f - 1.0f;
 
     // Multiple metallic frequencies
@@ -108,6 +108,7 @@ float DrumSampler::generateHihat(DrumVoice& v)
 
     float decayRate = 8.0f + (1.0f - decay) * 40.0f;
     float ampDecay = std::exp(-v.samplePos * decayRate);
+    v.ampEnv = ampDecay;
 
     float brightness = tone;
     return (noise * 0.5f + (metal1 + metal2) * 0.25f * brightness) * ampDecay;
@@ -115,7 +116,6 @@ float DrumSampler::generateHihat(DrumVoice& v)
 
 float DrumSampler::generateClap(DrumVoice& v)
 {
-    juce::Random rng;
     float noise = rng.nextFloat() * 2.0f - 1.0f;
 
     // Multiple micro-attacks (clap layering)
@@ -125,8 +125,9 @@ float DrumSampler::generateClap(DrumVoice& v)
     else if (pos < 40.0f) env = 0.3f;
     else if (pos < 60.0f) env = 0.8f;
     else env = std::exp(-(v.samplePos - 60.0f / (float)currentSampleRate) * (5.0f + (1.0f - decay) * 20.0f));
+    v.ampEnv = env;
 
-    return noise * env * tone;
+    return noise * env * juce::jmax(tone, 0.01f);
 }
 
 float DrumSampler::generateTom(DrumVoice& v)
@@ -135,6 +136,7 @@ float DrumSampler::generateTom(DrumVoice& v)
     float pitchDecay = std::exp(-v.samplePos * 3.0f);
     float freq = baseFreq + baseFreq * pitchDecay;
     float ampDecay = std::exp(-v.samplePos * (3.0f + (1.0f - decay) * 8.0f));
+    v.ampEnv = ampDecay;
 
     v.phase += freq / (float)currentSampleRate;
     if (v.phase >= 1.0f) v.phase -= 1.0f;
@@ -144,8 +146,10 @@ float DrumSampler::generateTom(DrumVoice& v)
 
 float DrumSampler::generateRim(DrumVoice& v)
 {
-    float freq1 = 500.0f * tone;
-    float freq2 = 800.0f * tone;
+    // Prevent division by zero when tone is 0
+    float safeTone = juce::jmax(tone, 0.01f);
+    float freq1 = 500.0f * safeTone;
+    float freq2 = 800.0f * safeTone;
 
     v.phase += freq1 / (float)currentSampleRate;
     if (v.phase >= 1.0f) v.phase -= 1.0f;
@@ -153,6 +157,7 @@ float DrumSampler::generateRim(DrumVoice& v)
     float osc = std::sin(v.phase * juce::MathConstants<float>::twoPi);
     float osc2 = std::sin(v.phase * juce::MathConstants<float>::twoPi * freq2 / freq1);
     float ampDecay = std::exp(-v.samplePos * (20.0f + (1.0f - decay) * 40.0f));
+    v.ampEnv = ampDecay;
 
     return (osc * 0.5f + osc2 * 0.5f) * ampDecay * snap;
 }
@@ -171,12 +176,12 @@ float DrumSampler::generateCowbell(DrumVoice& v)
     float osc2 = (p2 < 0.5f) ? 1.0f : -1.0f;
 
     float ampDecay = std::exp(-v.samplePos * (3.0f + (1.0f - decay) * 10.0f));
+    v.ampEnv = ampDecay;
     return (osc1 + osc2) * 0.3f * ampDecay;
 }
 
 float DrumSampler::generateCymbal(DrumVoice& v)
 {
-    juce::Random rng;
     float noise = rng.nextFloat() * 2.0f - 1.0f;
 
     // Rich metallic partials
@@ -193,6 +198,7 @@ float DrumSampler::generateCymbal(DrumVoice& v)
     if (v.phase >= 1.0f) v.phase -= 1.0f;
 
     float ampDecay = std::exp(-v.samplePos * (1.0f + (1.0f - decay) * 5.0f));
+    v.ampEnv = ampDecay;
     return (noise * 0.3f + metal * 0.7f * tone) * ampDecay;
 }
 
@@ -230,6 +236,7 @@ void DrumSampler::renderBlock(juce::AudioBuffer<float>& buffer, int startSample,
             monoSample += drumSample * v.velocity;
 
             v.samplePos += sampleInc;
+            // Deactivate voice when amplitude envelope has decayed
             if (v.ampEnv < 0.001f) v.active = false;
         }
 

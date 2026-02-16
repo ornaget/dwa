@@ -118,6 +118,9 @@ private:
     float masterVolume = 0.8f;
     float masterDrive = 0.0f;
 
+    // Pre-allocated buffer for tape mode (avoid allocation in processBlock)
+    juce::AudioBuffer<float> tapeOutputBuffer;
+
     void updateParametersFromAPVTS();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OP1FieldProcessor)

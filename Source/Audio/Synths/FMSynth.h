@@ -19,6 +19,7 @@ private:
     struct FMVoice : Voice
     {
         float modPhase = 0.0f;
+        float lastModOutput = 0.0f; // Per-voice feedback state
     };
 
     std::array<FMVoice, maxVoices> voices;
@@ -27,7 +28,6 @@ private:
     float depth = 0.3f;
     float feedback = 0.0f;
     float shape = 0.0f;      // morphs carrier waveform
-    float lastModOutput = 0.0f;
 
     float generateCarrier(float phase, float shapeAmount);
 };

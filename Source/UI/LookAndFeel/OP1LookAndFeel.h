@@ -22,6 +22,7 @@ public:
     juce::Font getTextButtonFont(juce::TextButton&, int buttonHeight) override;
     juce::Font getLabelFont(juce::Label& label) override;
 
-    static juce::Font getOP1Font(float height);
-    static juce::Font getOP1BoldFont(float height);
+    static juce::Font getDisplayFont(float height);
+    static juce::Font getDisplayBoldFont(float height);
+    static juce::Font getBodyFont(float height);
 };

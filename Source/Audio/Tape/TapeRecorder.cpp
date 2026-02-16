@@ -1,4 +1,5 @@
 #include "TapeRecorder.h"
+#include <cmath>
 
 TapeRecorder::TapeRecorder()
 {
@@ -14,33 +15,37 @@ void TapeRecorder::prepare(double sr, int spb)
 
 void TapeRecorder::play()
 {
-    playing = true;
-    recording = false;
+    playing.store(true);
+    recording.store(false);
 }
 
 void TapeRecorder::stop()
 {
-    playing = false;
-    recording = false;
+    playing.store(false);
+    recording.store(false);
 }
 
 void TapeRecorder::record()
 {
-    playing = true;
-    recording = true;
+    playing.store(true);
+    recording.store(true);
 }
 
 void TapeRecorder::rewind()
 {
-    playHead -= (float)sampleRate * 2.0f; // rewind 2 seconds
-    if (playHead < 0.0f) playHead = 0.0f;
+    float ph = playHead.load();
+    ph -= (float)sampleRate * 2.0f; // rewind 2 seconds
+    if (ph < 0.0f) ph = 0.0f;
+    playHead.store(ph);
 }
 
 void TapeRecorder::fastForward()
 {
-    playHead += (float)sampleRate * 2.0f;
-    if (playHead >= (float)maxTapeLength)
-        playHead = (float)(maxTapeLength - 1);
+    float ph = playHead.load();
+    ph += (float)sampleRate * 2.0f;
+    if (ph >= (float)maxTapeLength)
+        ph = (float)(maxTapeLength - 1);
+    playHead.store(ph);
 }
 
 void TapeRecorder::setTrackVolume(int track, float volume)
@@ -58,7 +63,7 @@ float TapeRecorder::getTrackVolume(int track) const
 
 float TapeRecorder::getPlaybackPosition() const
 {
-    return playHead / (float)maxTapeLength;
+    return playHead.load() / (float)maxTapeLength;
 }
 
 float TapeRecorder::getTapeLength() const
@@ -74,32 +79,35 @@ float TapeRecorder::saturate(float sample)
 
 void TapeRecorder::process(juce::AudioBuffer<float>& inputBuffer, juce::AudioBuffer<float>& outputBuffer)
 {
-    if (!playing)
+    if (!playing.load())
     {
         outputBuffer.clear();
         return;
     }
 
+    bool isRecording = recording.load();
+    float currentPlayHead = playHead.load();
     int numSamples = outputBuffer.getNumSamples();
     float loopStart = loopInPos * (float)maxTapeLength;
     float loopEnd = loopOutPos * (float)maxTapeLength;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        int pos = (int)playHead;
+        int pos = (int)currentPlayHead;
         if (pos < 0) pos = 0;
         if (pos >= maxTapeLength) pos = maxTapeLength - 1;
 
         // Record input to active track
-        if (recording && inputBuffer.getNumChannels() > 0)
+        if (isRecording && inputBuffer.getNumChannels() > 0)
         {
             float inputSample = 0.0f;
             for (int ch = 0; ch < inputBuffer.getNumChannels(); ++ch)
                 inputSample += inputBuffer.getSample(ch, sample);
             inputSample /= (float)inputBuffer.getNumChannels();
 
-            // Overdub: mix with existing content
-            tracks[(size_t)activeTrack][(size_t)pos] += saturate(inputSample);
+            // Overdub: mix with existing content (clamp to prevent unbounded growth)
+            float accumulated = tracks[(size_t)activeTrack][(size_t)pos] + saturate(inputSample);
+            tracks[(size_t)activeTrack][(size_t)pos] = juce::jlimit(-2.0f, 2.0f, accumulated);
         }
 
         // Mix all tracks for output
@@ -126,28 +134,30 @@ void TapeRecorder::process(juce::AudioBuffer<float>& inputBuffer, juce::AudioBuf
 
         // Advance playhead
         float increment = tapeSpeed * (reverse ? -1.0f : 1.0f);
-        playHead += increment;
+        currentPlayHead += increment;
 
         // Loop handling
         if (loopEnabled)
         {
-            if (!reverse && playHead >= loopEnd)
-                playHead = loopStart;
-            else if (reverse && playHead <= loopStart)
-                playHead = loopEnd;
+            if (!reverse && currentPlayHead >= loopEnd)
+                currentPlayHead = loopStart;
+            else if (reverse && currentPlayHead <= loopStart)
+                currentPlayHead = loopEnd;
         }
         else
         {
-            if (playHead >= (float)maxTapeLength)
+            if (currentPlayHead >= (float)maxTapeLength)
             {
-                playHead = (float)(maxTapeLength - 1);
-                playing = false;
+                currentPlayHead = (float)(maxTapeLength - 1);
+                playing.store(false);
             }
-            else if (playHead < 0.0f)
+            else if (currentPlayHead < 0.0f)
             {
-                playHead = 0.0f;
-                playing = false;
+                currentPlayHead = 0.0f;
+                playing.store(false);
             }
         }
     }
+
+    playHead.store(currentPlayHead);
 }

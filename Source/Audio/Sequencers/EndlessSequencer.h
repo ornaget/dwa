@@ -15,7 +15,9 @@ public:
     void clearAll();
     void setNumSteps(int steps);
 
-    const NoteEvent& getStep(int step) const { return steps[(size_t)step]; }
+    const NoteEvent& getStep(int step) const { return steps[(size_t)juce::jlimit(0, maxSteps - 1, step)]; }
+
+    void reset() override { SequencerBase::reset(); firstStepPending = true; }
 
 private:
     static constexpr int maxSteps = 128;
@@ -23,4 +25,5 @@ private:
     std::array<NoteEvent, maxSteps> steps;
     int activeNoteOff = -1;
     int noteOffCountdown = 0;
+    bool firstStepPending = true;
 };

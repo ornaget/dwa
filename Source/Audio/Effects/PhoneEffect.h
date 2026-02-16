@@ -17,9 +17,13 @@ private:
     float hicut = 0.5f;
     float bitcrush = 0.0f;
 
-    // Simple biquad filter states
+    // Filter states
     float hpStateL[2] = {};
     float hpStateR[2] = {};
     float lpStateL[2] = {};
     float lpStateR[2] = {};
+
+    // Sample-and-hold state (per-channel, persistent across buffer boundaries)
+    float holdSampleL = 0.0f, holdSampleR = 0.0f;
+    float holdCounterL = 0.0f, holdCounterR = 0.0f;
 };

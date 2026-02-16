@@ -23,7 +23,7 @@ OP1FieldEditor::OP1FieldEditor(OP1FieldProcessor& p)
     tapeBtn.setActiveColor(OP1Colors::tapeColor);
     mixerBtn.setActiveColor(OP1Colors::mixerColor);
     seqBtn.setActiveColor(OP1Colors::sequencerColor);
-    fxBtn.setActiveColor(OP1Colors::waveformYellow);
+    fxBtn.setActiveColor(OP1Colors::waveYellow);
 
     synthBtn.onClick = [this] { setMode(OP1Params::Mode::Synth); };
     drumBtn.onClick = [this] { setMode(OP1Params::Mode::Drum); };
@@ -137,6 +137,7 @@ OP1FieldEditor::OP1FieldEditor(OP1FieldProcessor& p)
 
 OP1FieldEditor::~OP1FieldEditor()
 {
+    stopTimer();
     setLookAndFeel(nullptr);
 }
 
@@ -354,12 +355,17 @@ void OP1FieldEditor::updateDisplayContent()
         }
     }
 
-    // Update encoder value displays
+    // Update encoder value displays (properly normalized 0-1)
+    auto normalizeEncoder = [](juce::Slider& enc) -> float {
+        double range = enc.getMaximum() - enc.getMinimum();
+        if (range <= 0.0) return 0.0f;
+        return (float)((enc.getValue() - enc.getMinimum()) / range);
+    };
     display.setEncoderValues(
-        (float)encoder1.getValue() / (float)(encoder1.getMaximum() - encoder1.getMinimum()),
-        (float)encoder2.getValue() / (float)(encoder2.getMaximum() - encoder2.getMinimum()),
-        (float)encoder3.getValue() / (float)(encoder3.getMaximum() - encoder3.getMinimum()),
-        (float)encoder4.getValue() / (float)(encoder4.getMaximum() - encoder4.getMinimum())
+        normalizeEncoder(encoder1),
+        normalizeEncoder(encoder2),
+        normalizeEncoder(encoder3),
+        normalizeEncoder(encoder4)
     );
 
     float tempo = processorRef.getAPVTS().getRawParameterValue(OP1Params::TEMPO_ID)->load();
@@ -379,8 +385,8 @@ void OP1FieldEditor::drawBody(juce::Graphics& g)
 
     // Main body - OP-1 Field aluminum white
     juce::ColourGradient bodyGradient(
-        OP1Colors::bodyColor, 0, 0,
-        OP1Colors::bodyDark, 0, bounds.getHeight(), false);
+        OP1Colors::bodyHighlight, 0, 0,
+        OP1Colors::bodyShadow, 0, bounds.getHeight(), false);
     g.setGradientFill(bodyGradient);
     g.fillRoundedRectangle(bounds, 16.0f);
 
@@ -411,14 +417,14 @@ void OP1FieldEditor::drawScrews(juce::Graphics& g)
 
     for (auto& pos : screwPositions)
     {
-        g.setColour(OP1Colors::bodyDark.darker(0.3f));
+        g.setColour(OP1Colors::bodyShadow.darker(0.3f));
         g.fillEllipse(pos.x - screwRadius, pos.y - screwRadius,
                        screwRadius * 2, screwRadius * 2);
-        g.setColour(OP1Colors::bodyDark);
+        g.setColour(OP1Colors::bodyShadow);
         g.drawEllipse(pos.x - screwRadius, pos.y - screwRadius,
                        screwRadius * 2, screwRadius * 2, 0.5f);
         // Screw slot
-        g.setColour(OP1Colors::bodyDark.darker(0.5f));
+        g.setColour(OP1Colors::bodyShadow.darker(0.5f));
         g.drawLine(pos.x - 2, pos.y, pos.x + 2, pos.y, 0.8f);
     }
 }
@@ -426,7 +432,7 @@ void OP1FieldEditor::drawScrews(juce::Graphics& g)
 void OP1FieldEditor::drawSpeaker(juce::Graphics& g, juce::Rectangle<int> area)
 {
     // OP-1 Field speaker grill pattern
-    g.setColour(OP1Colors::bodyDark.darker(0.2f));
+    g.setColour(OP1Colors::bodyShadow.darker(0.2f));
     int rows = area.getHeight() / 4;
     int cols = area.getWidth() / 4;
     for (int r = 0; r < rows; ++r)
@@ -453,12 +459,12 @@ void OP1FieldEditor::paint(juce::Graphics& g)
 
     // OP-1 Field logo area
     g.setColour(OP1Colors::textDim);
-    g.setFont(OP1LookAndFeel::getOP1BoldFont(11.0f));
+    g.setFont(OP1LookAndFeel::getDisplayBoldFont(11.0f));
     g.drawText("OP-1 FIELD", bounds.getX() + 60, 6, 100, 16, juce::Justification::centredLeft);
 
     // Model text
-    g.setFont(OP1LookAndFeel::getOP1Font(9.0f));
-    g.setColour(OP1Colors::bodyDark.darker(0.3f));
+    g.setFont(OP1LookAndFeel::getDisplayFont(9.0f));
+    g.setColour(OP1Colors::bodyShadow.darker(0.3f));
     g.drawText("TEENAGE ENGINEERING", bounds.getWidth() - 170, 6, 150, 14,
                juce::Justification::centredRight);
 }

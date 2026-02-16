@@ -1,5 +1,6 @@
 #pragma once
 #include "SynthEngine.h"
+#include <atomic>
 
 // Simple sampler that can record and playback audio
 class SamplerEngine : public SynthEngine
@@ -17,14 +18,14 @@ public:
     juce::String getParameterName(int index) const override;
 
     void recordSample(const float* data, int numSamples);
-    bool isRecording() const { return recording; }
+    bool isRecording() const { return recording.load(); }
     void startRecording();
     void stopRecording();
 
 private:
     struct SamplerVoice : Voice
     {
-        float playbackPos = 0.0f;
+        double playbackPos = 0.0; // double for precision with long samples
         float playbackRate = 1.0f;
         bool playing = false;
     };
@@ -39,7 +40,7 @@ private:
     float loopAmount = 0.0f;
     float grainSize = 0.0f;
 
-    bool recording = false;
-    int recordPos = 0;
+    std::atomic<bool> recording { false };
+    std::atomic<int> recordPos { 0 };
     static constexpr int maxRecordLength = 44100 * 30; // 30 seconds max
 };

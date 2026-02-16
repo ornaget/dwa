@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <atomic>
 
 class SequencerBase
 {
@@ -23,25 +24,26 @@ public:
 
     virtual juce::String getName() const = 0;
 
-    void setTempo(float bpm) { tempo = bpm; }
-    float getTempo() const { return tempo; }
+    void setTempo(float bpm) { tempo.store(juce::jmax(1.0f, bpm)); }
+    float getTempo() const { return tempo.load(); }
 
-    void setPlaying(bool play) { isPlaying = play; if (!play) reset(); }
-    bool getPlaying() const { return isPlaying; }
+    void setPlaying(bool play) { isPlaying.store(play); if (!play) reset(); }
+    bool getPlaying() const { return isPlaying.load(); }
 
     int getCurrentStep() const { return currentStep; }
     virtual int getNumSteps() const { return 16; }
 
 protected:
     double sampleRate = 44100.0;
-    float tempo = 120.0f;
+    std::atomic<float> tempo { 120.0f };
     int currentStep = 0;
     int sampleCounter = 0;
-    bool isPlaying = false;
+    std::atomic<bool> isPlaying { false };
 
     int getSamplesPerStep() const
     {
-        // 16th notes by default
-        return (int)(sampleRate * 60.0 / tempo / 4.0);
+        float t = tempo.load();
+        if (t <= 0.0f) t = 120.0f; // Prevent division by zero
+        return juce::jmax(1, (int)(sampleRate * 60.0 / (double)t / 4.0));
     }
 };
