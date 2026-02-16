@@ -37,9 +37,13 @@ void TapeScreen::drawTapeReels(juce::Graphics& g, juce::Rectangle<int> bounds)
     float leftReelSize  = reelSize * (0.5f + (1.0f - playPosition) * 0.5f);
     float rightReelSize = reelSize * (0.5f + playPosition * 0.5f);
 
-    // Advance reel angle when playing
+    // Advance reel angle when playing (wrap to prevent float precision loss)
     if (isPlaying)
+    {
         tapeReelAngle += 0.05f;
+        if (tapeReelAngle > juce::MathConstants<float>::twoPi)
+            tapeReelAngle -= juce::MathConstants<float>::twoPi;
+    }
 
     for (int reel = 0; reel < 2; ++reel)
     {

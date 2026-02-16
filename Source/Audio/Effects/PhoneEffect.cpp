@@ -30,8 +30,8 @@ void PhoneEffect::process(juce::AudioBuffer<float>& buffer)
         float* hpState = (ch == 0) ? hpStateL : hpStateR;
         float* lpState = (ch == 0) ? lpStateL : lpStateR;
 
-        float holdSample = 0.0f;
-        float holdCounter = 0.0f;
+        float& holdSample = (ch == 0) ? holdSampleL : holdSampleR;
+        float& holdCounter = (ch == 0) ? holdCounterL : holdCounterR;
 
         for (int i = 0; i < buffer.getNumSamples(); ++i)
         {

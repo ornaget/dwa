@@ -1,4 +1,5 @@
 #include "SamplerEngine.h"
+#include <cmath>
 
 SamplerEngine::SamplerEngine()
 {
@@ -18,24 +19,26 @@ void SamplerEngine::prepare(double sampleRate, int spb)
 
 void SamplerEngine::startRecording()
 {
-    recording = true;
-    recordPos = 0;
+    recordPos.store(0);
+    recording.store(true);
 }
 
 void SamplerEngine::stopRecording()
 {
-    recording = false;
-    sampleLength = recordPos;
+    recording.store(false);
+    sampleLength = recordPos.load();
 }
 
 void SamplerEngine::recordSample(const float* data, int numSamples)
 {
-    if (!recording) return;
-    for (int i = 0; i < numSamples && recordPos < maxRecordLength; ++i)
+    if (!recording.load()) return;
+    int pos = recordPos.load();
+    for (int i = 0; i < numSamples && pos < maxRecordLength; ++i)
     {
-        sampleBuffer[(size_t)recordPos++] = data[i];
+        sampleBuffer[(size_t)pos++] = data[i];
     }
-    if (recordPos >= maxRecordLength)
+    recordPos.store(pos);
+    if (pos >= maxRecordLength)
         stopRecording();
 }
 
@@ -56,7 +59,7 @@ void SamplerEngine::noteOn(int midiNote, float velocity)
 
     // Pitch shift based on note relative to base note
     target->playbackRate = std::pow(2.0f, (midiNote - baseNote) / 12.0f);
-    target->playbackPos = startPos * (float)sampleLength;
+    target->playbackPos = (double)startPos * (double)sampleLength;
 
     target->adsr.setSampleRate(currentSampleRate);
     target->adsr.setParameters(adsrParams);
@@ -74,8 +77,8 @@ void SamplerEngine::renderBlock(juce::AudioBuffer<float>& buffer, int startSampl
 {
     if (sampleLength == 0) return;
 
-    float sampleEnd = endPos * (float)sampleLength;
-    float sampleStart = startPos * (float)sampleLength;
+    double sampleEnd = (double)endPos * (double)sampleLength;
+    double sampleStart = (double)startPos * (double)sampleLength;
 
     for (int sample = 0; sample < numSamples; ++sample)
     {
@@ -86,10 +89,10 @@ void SamplerEngine::renderBlock(juce::AudioBuffer<float>& buffer, int startSampl
             float env = v.adsr.getNextSample();
             if (!v.adsr.isActive()) { v.active = false; continue; }
 
-            // Linear interpolation
+            // Linear interpolation with double precision position
             int pos0 = (int)v.playbackPos;
             int pos1 = pos0 + 1;
-            float frac = v.playbackPos - (float)pos0;
+            float frac = (float)(v.playbackPos - (double)pos0);
 
             if (pos0 >= 0 && pos1 < sampleLength)
             {
@@ -99,7 +102,7 @@ void SamplerEngine::renderBlock(juce::AudioBuffer<float>& buffer, int startSampl
                 monoSample += interpolated * env * v.velocity;
             }
 
-            v.playbackPos += v.playbackRate;
+            v.playbackPos += (double)v.playbackRate;
 
             // Loop or stop
             if (v.playbackPos >= sampleEnd)

@@ -137,6 +137,7 @@ OP1FieldEditor::OP1FieldEditor(OP1FieldProcessor& p)
 
 OP1FieldEditor::~OP1FieldEditor()
 {
+    stopTimer();
     setLookAndFeel(nullptr);
 }
 
@@ -354,12 +355,17 @@ void OP1FieldEditor::updateDisplayContent()
         }
     }
 
-    // Update encoder value displays
+    // Update encoder value displays (properly normalized 0-1)
+    auto normalizeEncoder = [](juce::Slider& enc) -> float {
+        double range = enc.getMaximum() - enc.getMinimum();
+        if (range <= 0.0) return 0.0f;
+        return (float)((enc.getValue() - enc.getMinimum()) / range);
+    };
     display.setEncoderValues(
-        (float)encoder1.getValue() / (float)(encoder1.getMaximum() - encoder1.getMinimum()),
-        (float)encoder2.getValue() / (float)(encoder2.getMaximum() - encoder2.getMinimum()),
-        (float)encoder3.getValue() / (float)(encoder3.getMaximum() - encoder3.getMinimum()),
-        (float)encoder4.getValue() / (float)(encoder4.getMaximum() - encoder4.getMinimum())
+        normalizeEncoder(encoder1),
+        normalizeEncoder(encoder2),
+        normalizeEncoder(encoder3),
+        normalizeEncoder(encoder4)
     );
 
     float tempo = processorRef.getAPVTS().getRawParameterValue(OP1Params::TEMPO_ID)->load();

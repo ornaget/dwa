@@ -32,6 +32,8 @@ void StringSynth::noteOn(int midiNote, float velocity)
     target->delayWritePos = 0;
     target->delayLength = (int)(currentSampleRate / target->frequency);
     if (target->delayLength < 2) target->delayLength = 2;
+    if (target->delayLength > (int)target->delayLine.size())
+        target->delayLength = (int)target->delayLine.size();
 
     // Fill delay line with noise burst (pluck excitation)
     juce::Random rng;
@@ -97,20 +99,23 @@ void StringSynth::renderBlock(juce::AudioBuffer<float>& buffer, int startSample,
             // Chorus modulation
             if (chorusAmount > 0.01f)
             {
+                int size = (int)v.delayLine.size();
                 float modOffset = std::sin(chorusPhase * juce::MathConstants<float>::twoPi) * chorusDepth;
                 int modReadPos = readPos - (int)modOffset;
-                if (modReadPos < 0) modReadPos += (int)v.delayLine.size();
-                if (modReadPos >= (int)v.delayLine.size()) modReadPos -= (int)v.delayLine.size();
+                modReadPos = ((modReadPos % size) + size) % size; // Safe wrapping
                 float chorusSample = v.delayLine[(size_t)modReadPos] * 0.3f;
                 output += chorusSample * chorusAmount;
             }
 
             // Write back to delay line (sustain the resonance)
-            float decay = 0.996f - damping * 0.01f;
-            v.delayLine[(size_t)v.delayWritePos] = filtered * decay;
+            float decayFactor = 0.996f - damping * 0.01f;
+            v.delayLine[(size_t)v.delayWritePos] = filtered * decayFactor;
             v.delayWritePos++;
             if (v.delayWritePos >= (int)v.delayLine.size())
                 v.delayWritePos = 0;
+
+            // Decay the excitation state
+            v.excitation *= 0.999f;
 
             // Check if string has died out
             if (std::abs(output) < 0.0001f && v.excitation < 0.001f)

@@ -82,13 +82,14 @@ float DigitalSynth::applyFold(float sample, float foldAmount)
     if (foldAmount < 0.01f) return sample;
     float gain = 1.0f + foldAmount * 8.0f;
     float s = sample * gain;
-    // Wave folding
-    while (s > 1.0f || s < -1.0f)
+    // Wave folding with iteration limit to prevent infinite loops
+    int maxIter = 16;
+    while ((s > 1.0f || s < -1.0f) && maxIter-- > 0)
     {
         if (s > 1.0f) s = 2.0f - s;
         if (s < -1.0f) s = -2.0f - s;
     }
-    return s;
+    return juce::jlimit(-1.0f, 1.0f, s); // Safety clamp
 }
 
 void DigitalSynth::renderBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples)

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 OP1FieldProcessor::OP1FieldProcessor()
     : AudioProcessor(BusesProperties()
@@ -39,6 +40,9 @@ void OP1FieldProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     patternSeq.prepare(sampleRate);
     fingerSeq.prepare(sampleRate);
     sketchSeq.prepare(sampleRate);
+
+    // Pre-allocate tape output buffer to avoid heap allocation in processBlock
+    tapeOutputBuffer.setSize(2, samplesPerBlock);
 }
 
 void OP1FieldProcessor::releaseResources()
@@ -121,9 +125,19 @@ void OP1FieldProcessor::updateParametersFromAPVTS()
             dsynth.setParameter(2, apvts.getRawParameterValue(OP1Params::DSYN_PARAM2_ID)->load());
             dsynth.setParameter(3, apvts.getRawParameterValue(OP1Params::DSYN_PARAM3_ID)->load());
             break;
-        default:
+        case OP1Params::SynthEngineType::Sampler:
+            samplerEngine.setParameter(0, apvts.getRawParameterValue(OP1Params::ENC1_ID)->load());
+            samplerEngine.setParameter(1, apvts.getRawParameterValue(OP1Params::ENC2_ID)->load());
+            samplerEngine.setParameter(2, apvts.getRawParameterValue(OP1Params::ENC3_ID)->load());
+            samplerEngine.setParameter(3, apvts.getRawParameterValue(OP1Params::ENC4_ID)->load());
             break;
     }
+
+    // Drum sampler params (always update regardless of mode, since drum mode uses these)
+    drumSampler.setParameter(0, apvts.getRawParameterValue(OP1Params::ENC1_ID)->load());
+    drumSampler.setParameter(1, apvts.getRawParameterValue(OP1Params::ENC2_ID)->load());
+    drumSampler.setParameter(2, apvts.getRawParameterValue(OP1Params::ENC3_ID)->load());
+    drumSampler.setParameter(3, apvts.getRawParameterValue(OP1Params::ENC4_ID)->load());
 
     // Mixer params
     masterVolume = apvts.getRawParameterValue(OP1Params::MIX_MASTER_VOL_ID)->load();
@@ -238,15 +252,21 @@ void OP1FieldProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::Mid
     if (effect)
         effect->process(buffer);
 
-    // If in tape mode, process tape
+    // If in tape mode, process tape using pre-allocated buffer
     if (currentMode == OP1Params::Mode::Tape)
     {
-        juce::AudioBuffer<float> tapeOutput(buffer.getNumChannels(), buffer.getNumSamples());
-        tapeRecorder.process(buffer, tapeOutput);
+        // Ensure pre-allocated buffer is large enough
+        if (tapeOutputBuffer.getNumChannels() < buffer.getNumChannels() ||
+            tapeOutputBuffer.getNumSamples() < buffer.getNumSamples())
+        {
+            tapeOutputBuffer.setSize(buffer.getNumChannels(), buffer.getNumSamples());
+        }
+        tapeOutputBuffer.clear();
+        tapeRecorder.process(buffer, tapeOutputBuffer);
 
         // Mix tape output with live signal
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            buffer.addFrom(ch, 0, tapeOutput, ch, 0, buffer.getNumSamples());
+            buffer.addFrom(ch, 0, tapeOutputBuffer, ch, 0, buffer.getNumSamples());
     }
 
     // Master drive (saturation)

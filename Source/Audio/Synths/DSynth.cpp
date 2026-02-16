@@ -1,4 +1,5 @@
 #include "DSynth.h"
+#include <cmath>
 
 DSynth::DSynth()
 {
@@ -29,6 +30,7 @@ void DSynth::noteOn(int midiNote, float velocity)
     target->phase2 = 0.0f;
     target->phase3 = 0.0f;
     target->accumulator = 0.0f;
+    target->heldSample = 0.0f;
     target->active = true;
     target->adsr.setSampleRate(currentSampleRate);
     target->adsr.setParameters(adsrParams);
@@ -63,7 +65,7 @@ float DSynth::runAlgorithm(DSynthVoice& v, float freq)
         case 1: // Phase distortion
         {
             float p = v.phase;
-            float d = param1;
+            float d = juce::jlimit(0.01f, 0.99f, param1); // Prevent division by zero
             if (p < d)
                 p = p / d * 0.5f;
             else
@@ -81,9 +83,8 @@ float DSynth::runAlgorithm(DSynthVoice& v, float freq)
         }
         case 3: // Noise + tone
         {
-            juce::Random rng;
             float tone = std::sin(v.phase * twoPi);
-            float noise = rng.nextFloat() * 2.0f - 1.0f;
+            float noise = rng.nextFloat() * 2.0f - 1.0f; // Use persistent RNG
             return tone * (1.0f - param1) + noise * param1 * param2;
         }
         case 4: // Wavetable-ish crossfade
@@ -97,29 +98,29 @@ float DSynth::runAlgorithm(DSynthVoice& v, float freq)
             float mix2 = square * (1.0f - param1) + tri * param1;
             return mix1 * (1.0f - param2) + mix2 * param2;
         }
-        case 5: // Bit crush
+        case 5: // Bit crush with proper sample-and-hold
         {
             float sine = std::sin(v.phase * twoPi);
             int bits = 2 + (int)((1.0f - param1) * 14.0f);
             float levels = (float)(1 << bits);
             float crushed = std::round(sine * levels) / levels;
-            // Sample rate reduction
+            // Sample rate reduction with proper sample-and-hold
             float holdRate = 1.0f + param2 * 50.0f;
             v.accumulator += inc * holdRate;
             if (v.accumulator >= 1.0f)
             {
                 v.accumulator -= 1.0f;
-                return crushed;
+                v.heldSample = crushed; // Update held sample
             }
-            return crushed;
+            return v.heldSample; // Return held sample (not current)
         }
         case 6: // Formant
         {
             float formant1 = param1 * 2000.0f + 200.0f;
             float formant2 = param2 * 3000.0f + 500.0f;
             float carrier = std::sin(v.phase * twoPi);
-            float mod1 = std::sin(v.phase * twoPi * formant1 / freq);
-            float mod2 = std::sin(v.phase * twoPi * formant2 / freq);
+            float mod1 = std::sin(v.phase * twoPi * formant1 / juce::jmax(freq, 1.0f));
+            float mod2 = std::sin(v.phase * twoPi * formant2 / juce::jmax(freq, 1.0f));
             return carrier * 0.5f + mod1 * 0.3f + mod2 * 0.2f;
         }
         case 7: // Supersaw

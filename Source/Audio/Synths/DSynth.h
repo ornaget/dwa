@@ -22,6 +22,7 @@ private:
         float phase2 = 0.0f;
         float phase3 = 0.0f;
         float accumulator = 0.0f;
+        float heldSample = 0.0f; // For bit-crush sample-and-hold
     };
 
     std::array<DSynthVoice, maxVoices> voices;
@@ -30,6 +31,8 @@ private:
     float param1 = 0.5f;
     float param2 = 0.5f;
     float param3 = 0.5f;
+
+    juce::Random rng; // Persistent RNG for noise algorithms
 
     float runAlgorithm(DSynthVoice& v, float freq);
 };

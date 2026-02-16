@@ -37,6 +37,8 @@ private:
     float snap = 0.5f;
     float distortion = 0.0f;
 
+    juce::Random rng; // Persistent RNG for noise generation
+
     float generateKick(DrumVoice& v);
     float generateSnare(DrumVoice& v);
     float generateHihat(DrumVoice& v);

@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <atomic>
 
 // 4-track tape recorder emulation (like OP-1 Field's tape)
 class TapeRecorder
@@ -55,11 +56,11 @@ private:
     std::array<float, numTracks> trackVolumes = { 0.8f, 0.8f, 0.8f, 0.8f };
 
     int activeTrack = 0;
-    float playHead = 0.0f;
+    std::atomic<float> playHead { 0.0f };
     float tapeSpeed = 1.0f;
     bool reverse = false;
-    bool playing = false;
-    bool recording = false;
+    std::atomic<bool> playing { false };
+    std::atomic<bool> recording { false };
     bool loopEnabled = false;
     float loopInPos = 0.0f;
     float loopOutPos = 1.0f;
