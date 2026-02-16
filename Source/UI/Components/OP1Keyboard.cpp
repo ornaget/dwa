@@ -85,7 +85,7 @@ void OP1Keyboard::paint(juce::Graphics& g)
         if (key.noteOffset % 12 == 0)
         {
             g.setColour(OP1Colors::textDim);
-            g.setFont(10.0f);
+            g.setFont(juce::Font(juce::FontOptions(10.0f)));
             int octave = currentOctave + key.noteOffset / 12;
             g.drawText("C" + juce::String(octave),
                        key.bounds.removeFromBottom(15.0f),
